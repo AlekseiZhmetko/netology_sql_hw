@@ -1,3 +1,5 @@
+import os
+
 import psycopg2
 
 def create_tables(conn):
@@ -6,16 +8,14 @@ def create_tables(conn):
         id SERIAL PRIMARY KEY,
         first_name VARCHAR(40),
         last_name VARCHAR(40),
-        email VARCHAR(50) CHECK (email LIKE '%_@__%.__%') UNIQUE
+        email VARCHAR(50) CHECK (email LIKE '%_@__%.__%') UNIQUE 
     );
     ''')
     cur.execute('''
     CREATE TABLE IF NOT EXISTS client_phone(
         id INTEGER REFERENCES clients(id),
-        phone VARCHAR(15));
+        phone VARCHAR(15), CHECK(phone !~ '[:alpha:]'));
     ''')
-    conn.commit()
-    # добавить проверку номера телефона
 
 def get_client_id(conn, email: str) -> int:
     cur.execute("""
@@ -24,7 +24,6 @@ def get_client_id(conn, email: str) -> int:
     return cur.fetchone()[0]
 
 def add_client(conn, first_name, last_name, email, phone=None):
-    # попробовать обработать ошибки, в т.ч. неправильного формата имейла
     cur.execute('''
     INSERT INTO clients(first_name, last_name, email)
     VALUES(%s, %s, %s);
@@ -38,25 +37,25 @@ def add_client(conn, first_name, last_name, email, phone=None):
         ''', (client_id, phone))
 
 def add_phone(conn, client_id, phone):
-    # client_email = input('Введите адрес электронной почты клиента, которому нужно добавить телефон: ')
-    # phone = input('Введите номер телефона для добавления: ')
-    # client_id = get_client_id(cur, client_email)
     cur.execute('''
     INSERT INTO client_phone(id, phone)
     VALUES(%s, %s);
     ''', (client_id, phone))
-    conn.commit()
 
+# работа функции исправлена
 def update_client_info(conn, client_id, first_name=None, last_name=None, email=None, phone=None):
     cur.execute('''
     UPDATE clients
-    SET first_name=%s, last_name=%s, email=%s
+    SET 
+    first_name = COALESCE(%s, first_name),
+    last_name = COALESCE(%s, last_name),
+    email = COALESCE(%s, email)
     WHERE id=%s;
     UPDATE client_phone
-    SET phone=%s
+    SET 
+    phone = COALESCE(%s, phone)
     WHERE id=%s;
     ''', (first_name, last_name, email, client_id, phone, client_id))
-    conn.commit()
 
 def delete_phone(conn, client_id, phone):
     cur.execute('''
@@ -72,27 +71,31 @@ def delete_client(conn, client_id):
     DELETE FROM clients
     WHERE id=%s;
     ''', (client_id, client_id))
-    conn.commit()
 
 def find_client(conn, first_name=None, last_name=None, email=None, phone=None):
     cur.execute('''
     SELECT clients.id FROM clients
-    INNER JOIN client_phone ON clients.id = client_phone.id 
-    WHERE phone='{}'
-    OR first_name='{}'
-    OR last_name='{}'
-    OR email='{}';
-    '''.format(phone, first_name, last_name, email))
+    LEFT JOIN client_phone ON clients.id = client_phone.id 
+    WHERE phone=%s
+    OR first_name=%s
+    OR last_name=%s
+    OR email=%s;
+    ''', (phone, first_name, last_name, email))
     print(cur.fetchone()[0])
 
+if __name__ == '__main__':
 
-with psycopg2.connect(database="netology_sql_hw", user="postgres", password="") as conn:
-    with conn.cursor() as cur:
+    database = os.getenv('database')
+    user = os.getenv('user')
+    password = os.getenv('password')
 
-        # create_tables(conn)
-        # add_client(conn, 'Paul', 'McCartney', 'sirpaul@gmail.com')
-        # add_phone(conn, 1, '0602')
-        # update_client_info(conn, 1, 'Alex', 'Jmetko', 'aleksei@yandex.ru', '99999')
-        # delete_phone(conn, 1, '99999')
-        # delete_client(conn, 1)
-        # find_client(conn, email='johnsmith@gmail.com')
+    with psycopg2.connect(database=database, user=user, password=password) as conn:
+        with conn.cursor() as cur:
+
+            # create_tables(conn)
+            # add_client(conn, 'mick', 'Jagger', 'Mick@rs.uk')
+            add_phone(conn, 1, '79216380318')
+            # update_client_info(conn, 1, first_name='John', email='kika@yandex.ru')
+            # delete_phone(conn, 1, '99999')
+            # delete_client(conn, 1)
+            # find_client(conn, email='Mick@rs.uk')
